@@ -1,0 +1,137 @@
+###########################
+#########CODE ACCOMPAGNANT L'ARTICLE SOUMIS AU NATURALISTE CANADIEN
+###2023-11-16
+# PAR JEROME LEMAITRE
+
+# OBJECTIF  : SIMULATION DE LA STABILITÉ ET DE LA PERSISTANCE DES POPULATIONS############
+############################
+###
+###
+###
+
+
+#Packages et options
+library(plotrix)
+options(scipen=999)
+options(OutDec=",")
+
+# Indication des paramtères à considérer (voir détails dans l'article). Peuvent être modifiés au besoin.
+lambda<-1.015 #Taux de croissance
+n<-67500 #Taile initiale de la population
+v<-0.1 #Taux de stochosticité
+q<-303  #seuil de quasi-exctinction
+An<-100 #Nbre d'année pour la simulation
+Fwind<-median(c(1923,2743)) #Nbre d'individus tués par année. Ici, le # de chauves=souris cendrées tuées au Québec par les éoliennes. 
+J=1000   #Nombre de simulations     ####################AJUSTER À 10 000 À LA FIN!!!
+
+Lambda<-c(0.94,1.015,1.10,1.18)     #Taux de croissance à tester
+Pop.init<-c(12000,25000,50000,75000,100000,150000,200000,250000,300000,400000,500000)   #Taille de population à tester
+
+#### Calcul des paramètres pour le Scenario sans éoliennes
+  #Création du tableau qui contiendra les résutats des scénarios de taille de pop x lamdba
+Scenario1<-data.frame(rep(Pop.init,each=length(Lambda)), rep(Lambda,length(Pop.init)))
+names(Scenario1)<-c("pop.init","lambda")
+  #Paramètres pour la stabilité : médiane, quartiles, mean, se and sd
+Scenario1$stab_med<-as.numeric(rep(NA,dim(Scenario1)[1]))
+Scenario1$stab_quant1<-as.numeric(rep(NA,dim(Scenario1)[1]))
+Scenario1$stab_quant3<-as.numeric(rep(NA,dim(Scenario1)[1]))
+Scenario1$mean<-as.numeric(rep(NA,dim(Scenario1)[1]))
+Scenario1$se<-as.numeric(rep(NA,dim(Scenario1)[1]))
+Scenario1$sd<-as.numeric(rep(NA,dim(Scenario1)[1]))
+  #Paramètre extinction
+Scenario1$extin<-as.numeric(rep(NA,dim(Scenario1)[1]))
+
+for (k in 1:dim(Scenario1)[1]){
+  Stab<-as.numeric(rep(NA,J))
+  Extin<-Stab 
+      for (j in 1:J){
+         # Calcul pour une population
+            r<-rlnorm(n=1:An,meanlog=log(Scenario1$lambda[k]),sdlog=sqrt(v))  #Génération de stochasticité
+            n.i<-c(Scenario1$pop.init[k],as.numeric(rep(NA,An-1)))  #Création d'un vecteur qui contiendra la taille de pop pour chaque année sur 100 ans
+            
+            for(i in 1:(An-1)){
+              I<-n.i[i]+(r[i]-1)*n.i[i] #Équation de l'article
+              # Respect des conditions de capacité de support (10 x taille initiale) et seuil de quasi-extinction (q)
+              n.i[i+1]<-ifelse(I>10*Scenario1$pop.init[k],10*Scenario1$pop.init[k],
+                               ifelse(I<q,0,I) )
+                            }
+           
+            #Calcul de l'extinction : Si la simulation a atteint le seuil (q), alors on lui donne 1.
+            Extin[j]<-ifelse(min(n.i)<q,1,0)
+            #Calcul de la stabilité de la pop.
+            Stab[j]<-n.i[An]/Scenario1$pop.init[k]
+      }
+  #Calcul des paramètres de stabilité sur l'ensemble des simulations (J)
+  Scenario1$stab_med[k]<-median(Stab)
+  Scenario1$stab_quant1[k]<-quantile(Stab,0.25)
+  Scenario1$stab_quant3[k]<-quantile(Stab,0.75)
+  Scenario1$mean[k]<-mean(Stab)
+  Scenario1$se[k]<-std.error(Stab)
+  Scenario1$sd[k]<-sd(Stab)  
+  #Proportion des simulations qui ont atteint l'extinction 
+  Scenario1$extin[k]<-round(sum(Extin)/length(Extin),3)
+  
+}
+#Calcul de la survie étant 1 - extinction
+Scenario1$survie<-1-Scenario1$extin
+
+
+#### Scenario 2 : avec éoliennes - Taux de mortalité constant au sein d'une même simulation
+#Ce scénario reprend la même simulation qui ci-dessus.
+#Voir indications ci-dessus pour comprendre le code.
+#Les commentaires ci-dessous concernent uniquement les différentes de code
+
+Scenario2<-data.frame(rep(Pop.init,each=length(Lambda)), rep(Lambda,length(Pop.init)))
+names(Scenario2)<-c("pop.init","lambda")  
+Scenario2$stab_med<-as.numeric(rep(NA,dim(Scenario2)[1]))
+Scenario2$stab_quant1<-as.numeric(rep(NA,dim(Scenario2)[1]))
+Scenario2$stab_quant3<-as.numeric(rep(NA,dim(Scenario2)[1]))
+Scenario2$mean<-as.numeric(rep(NA,dim(Scenario2)[1]))
+Scenario2$se<-as.numeric(rep(NA,dim(Scenario2)[1]))
+Scenario2$sd<-as.numeric(rep(NA,dim(Scenario2)[1]))
+Scenario2$extin<-as.numeric(rep(NA,dim(Scenario2)[1]))
+
+for (k in 1:dim(Scenario2)[1]){
+  Stab<-as.numeric(rep(NA,J))
+  Extin<-Stab 
+  for (j in 1:J){
+    # Ici, ajout de l'élément Kill, qui correspond au Nbre d'individus tués.
+    #Kill<-Fwind
+    # On peut aussi le voir en % soit un taux de mortalité constant au cours d'un même simulation. Ici, les 2 donnent des résultats similaires
+    Kill<-Fwind/Scenario2$pop.init[k]
+    r<-rlnorm(n=1:An,meanlog=log(Scenario2$lambda[k]),sdlog=sqrt(v))
+    n.i<-c(Scenario2$pop.init[k],as.numeric(rep(NA,An-1)))
+    
+    for(i in 1:(An-1)){
+      #I<-(n.i[i]+(r[i]-1)*n.i[i])-Kill
+      I<-(n.i[i]+(r[i]-1)*n.i[i])*(1-Kill)
+      n.i[i+1]<-ifelse(I>10*Scenario2$pop.init[k],10*Scenario2$pop.init[k],
+                       ifelse(I<q,0,I) )
+    }
+    
+    
+    Extin[j]<-ifelse(min(n.i)<q,1,0)
+    Stab[j]<-n.i[An]/Scenario2$pop.init[k]
+  }
+  Scenario2$stab_med[k]<-median(Stab)
+  Scenario2$stab_quant1[k]<-quantile(Stab,0.25)
+  Scenario2$stab_quant3[k]<-quantile(Stab,0.75)
+  Scenario2$mean[k]<-mean(Stab)
+  Scenario2$se[k]<-std.error(Stab)
+  Scenario2$sd[k]<-sd(Stab)  
+  Scenario2$extin[k]<-round(sum(Extin)/length(Extin),3)
+  
+  
+}
+Scenario2$survie<-1-Scenario2$extin
+
+#Exportation des données en CSV
+write.csv2(Scenario1,file="scenario1.csv")
+write.csv2(Scenario2,file="scenario2.csv")
+
+
+
+
+
+
+
